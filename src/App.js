@@ -216,6 +216,7 @@ const QRCodeGenerator = () => {
     organization: '',
     url: ''
   });
+  const [logoEnabled, setLogoEnabled] = useState(true);
 
   // Create QR Canvas function
   const createQRCanvas = async (text, size) => {
@@ -245,26 +246,34 @@ const QRCodeGenerator = () => {
         size: size,
         background: 'white',
         foreground: 'black',
-        level: 'H'
+        level: logoEnabled ? 'H' : 'M' // ロゴありなら高エラー訂正
       });
       
-      // Add smile emoji in the center
-      const ctx = canvas.getContext('2d');
-      const centerX = canvas.width / 2;
-      const centerY = canvas.height / 2;
-      const logoSize = Math.floor(size * 0.13);
-      
-      // Draw white background circle for logo
-      ctx.fillStyle = 'white';
-      ctx.beginPath();
-      ctx.arc(centerX, centerY, logoSize/2 + 2, 0, 2 * Math.PI);
-      ctx.fill();
-      
-      // Draw smile emoji
-      ctx.font = logoSize.toString() + 'px Arial';
-      ctx.textAlign = 'center';
-      ctx.textBaseline = 'middle';
-      ctx.fillText('😊', centerX, centerY);
+      // Add smile emoji in the center (if enabled)
+      if (logoEnabled) {
+        const ctx = canvas.getContext('2d');
+        const centerX = canvas.width / 2;
+        const centerY = canvas.height / 2;
+        const logoSize = Math.floor(size * 0.10); // サイズを10%に縮小
+        
+        // Draw white background circle for logo
+        ctx.fillStyle = 'white';
+        ctx.beginPath();
+        ctx.arc(centerX, centerY, logoSize/2 + 4, 0, 2 * Math.PI);
+        ctx.fill();
+        
+        // Draw border for better contrast
+        ctx.strokeStyle = '#f0f0f0';
+        ctx.lineWidth = 1;
+        ctx.stroke();
+        
+        // Draw smile emoji
+        ctx.font = logoSize.toString() + 'px Arial';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.fillStyle = 'black';
+        ctx.fillText('😊', centerX, centerY);
+      }
       
       return canvas;
     } catch (error) {
@@ -340,7 +349,7 @@ const QRCodeGenerator = () => {
     qrContainerRef.current.appendChild(img);
   };
 
-  // QR Code decoding function
+  // 改善されたQRコード解読機能
   const decodeQRCode = async (imageFile) => {
     setIsDecoding(true);
     setDecodeError('');
@@ -364,15 +373,72 @@ const QRCodeGenerator = () => {
       const ctx = canvas.getContext('2d');
       
       img.onload = () => {
-        canvas.width = img.width;
-        canvas.height = img.height;
-        ctx.drawImage(img, 0, 0);
+        // 画像サイズの最適化
+        const maxSize = 1000;
+        let { width, height } = img;
         
-        // Get image data
-        const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+        if (width > maxSize || height > maxSize) {
+          const ratio = Math.min(maxSize / width, maxSize / height);
+          width *= ratio;
+          height *= ratio;
+        }
         
-        // Decode QR code
-        const code = window.jsQR(imageData.data, imageData.width, imageData.height);
+        canvas.width = width;
+        canvas.height = height;
+        
+        // 高品質な画像描画
+        ctx.imageSmoothingEnabled = false;
+        ctx.drawImage(img, 0, 0, width, height);
+        
+        // 複数の画像処理を試行
+        const tryDecode = (imageData) => {
+          return window.jsQR(imageData.data, imageData.width, imageData.height, {
+            inversionAttempts: "dontInvert"
+          });
+        };
+        
+        // オリジナル画像で試行
+        let imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+        let code = tryDecode(imageData);
+        
+        if (!code) {
+          // コントラスト調整
+          const data = imageData.data;
+          const contrast = 1.5;
+          const factor = (259 * (contrast * 255 + 255)) / (255 * (259 - contrast * 255));
+          
+          for (let i = 0; i < data.length; i += 4) {
+            data[i] = Math.max(0, Math.min(255, factor * (data[i] - 128) + 128));
+            data[i + 1] = Math.max(0, Math.min(255, factor * (data[i + 1] - 128) + 128));
+            data[i + 2] = Math.max(0, Math.min(255, factor * (data[i + 2] - 128) + 128));
+          }
+          
+          ctx.putImageData(imageData, 0, 0);
+          imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+          code = tryDecode(imageData);
+        }
+        
+        if (!code) {
+          // グレースケール変換
+          const data = imageData.data;
+          for (let i = 0; i < data.length; i += 4) {
+            const gray = data[i] * 0.299 + data[i + 1] * 0.587 + data[i + 2] * 0.114;
+            data[i] = gray;
+            data[i + 1] = gray;
+            data[i + 2] = gray;
+          }
+          
+          ctx.putImageData(imageData, 0, 0);
+          imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+          code = tryDecode(imageData);
+        }
+        
+        if (!code) {
+          // 異なる反転設定で試行
+          code = window.jsQR(imageData.data, imageData.width, imageData.height, {
+            inversionAttempts: "attemptBoth"
+          });
+        }
         
         if (code) {
           setDecodedResult(code.data);
@@ -574,7 +640,7 @@ const QRCodeGenerator = () => {
     
     setQrData(data);
     generateQRCode(data);
-  }, [activeTab, urlInput, textInput, contactInfo]);
+  }, [activeTab, urlInput, textInput, contactInfo, logoEnabled]); // logoEnabledを依存配列に追加
 
   const downloadQRCode = () => {
     if (!qrData) return;
@@ -622,6 +688,7 @@ const QRCodeGenerator = () => {
     });
     setBatchInput('');
     setBatchResults([]);
+    setLogoEnabled(true); // ロゴ設定もリセット
     setQrData('');
     if (qrContainerRef.current) {
       qrContainerRef.current.innerHTML = '';
@@ -990,6 +1057,21 @@ const QRCodeGenerator = () => {
               {activeTab !== 'decode' && activeTab !== 'batch' && (
                 <div className="flex flex-col items-center space-y-6">
                   <h2 className="text-2xl font-semibold text-gray-800">{t('generatedQrCode')}</h2>
+                  
+                  {/* Logo Toggle */}
+                  <div className="flex items-center gap-3 bg-gray-50 rounded-xl px-4 py-2">
+                    <span className="text-sm font-medium text-gray-700">スマイルロゴ:</span>
+                    <button
+                      onClick={() => setLogoEnabled(!logoEnabled)}
+                      className={'flex items-center gap-2 px-3 py-1 rounded-lg text-sm font-medium transition-all duration-200 ' + (
+                        logoEnabled
+                          ? 'bg-purple-600 text-white'
+                          : 'bg-gray-200 text-gray-600 hover:bg-gray-300'
+                      )}
+                    >
+                      {logoEnabled ? '😊 ON' : '⭕ OFF'}
+                    </button>
+                  </div>
                   
                   <div className="bg-gray-50 rounded-2xl p-8 w-full max-w-sm">
                     {qrData ? (
