@@ -1,6 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { QrCode, Link, MessageSquare, User, Download, Copy, Check, Upload, Search, Grid3X3 } from 'lucide-react';
-import './App.css';
+import { QrCode, Link, MessageSquare, User, Download, Copy, Check, Upload, Search, Grid } from 'lucide-react';
 
 const TRANSLATIONS = {
   "en-US": {
@@ -633,7 +632,7 @@ const QRCodeGenerator = () => {
     { id: 'url', label: t('urlTab'), icon: Link },
     { id: 'text', label: t('textTab'), icon: MessageSquare },
     { id: 'contact', label: t('contactTab'), icon: User },
-    { id: 'batch', label: t('batchTab'), icon: Grid3X3 },
+    { id: 'batch', label: t('batchTab'), icon: Grid },
     { id: 'decode', label: t('decodeTab'), icon: Search }
   ];
 
@@ -834,7 +833,7 @@ const QRCodeGenerator = () => {
                           </>
                         ) : (
                           <>
-                            <Grid3X3 className="w-4 h-4" />
+                            <Grid className="w-4 h-4" />
                             {t('generateBatch')}
                           </>
                         )}
