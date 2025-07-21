@@ -15,6 +15,7 @@ const QRCodeGenerator = () => {
   const [logoEnabled, setLogoEnabled] = useState(true);
   const [textInput, setTextInput] = useState('');
   const [detectedType, setDetectedType] = useState('');
+  const [fileName, setFileName] = useState(''); // ファイル名指定用
   const qrContainerRef = useRef(null);
   const fileInputRef = useRef(null);
 
@@ -313,13 +314,47 @@ const QRCodeGenerator = () => {
     link.click();
   };
 
+  // ファイル名生成・クリーンアップ
+  const generateFileName = () => {
+    let downloadFileName = fileName.trim();
+    
+    if (!downloadFileName) {
+      // ファイル名が未指定の場合は内容から自動生成
+      if (isURL(textInput)) {
+        try {
+          const url = new URL(processURL(textInput));
+          downloadFileName = url.hostname.replace(/^www\./, '') || 'qr-url';
+        } catch {
+          downloadFileName = 'qr-url';
+        }
+      } else if (isContactInfo(textInput)) {
+        downloadFileName = 'qr-contact';
+      } else {
+        // テキストの最初の10文字を使用（安全な文字のみ）
+        const safeText = textInput.replace(/[^a-zA-Z0-9\u3040-\u309F\u30A0-\u30FF\u4E00-\u9FAF]/g, '').substring(0, 10);
+        downloadFileName = safeText || 'qr-text';
+      }
+    }
+    
+    // ファイル名を安全な文字のみに制限
+    return downloadFileName.replace(/[<>:"/\\|?*]/g, '_');
+  };
+
+  const getPreviewFileName = () => {
+    const cleanName = generateFileName();
+    const timestamp = new Date().toISOString().slice(0, 19).replace(/[:-]/g, '');
+    return cleanName + '_' + timestamp + '.png';
+  };
+
   // ダウンロード・コピー
   const downloadQRCode = () => {
     if (!qrData) return;
     const canvas = qrContainerRef.current?.querySelector('canvas');
     if (canvas) {
       const link = document.createElement('a');
-      link.download = 'qr-code.png';
+      const finalFileName = getPreviewFileName();
+      
+      link.download = finalFileName;
       link.href = canvas.toDataURL();
       link.click();
     }
@@ -356,7 +391,7 @@ const QRCodeGenerator = () => {
       setQrData(processedData);
       generateQRCode(processedData);
     }
-  }, [textInput, logoEnabled, activeTab]);
+  }, [textInput, logoEnabled, activeTab, fileName]); // fileNameを依存配列に追加
 
   const tabs = [
     { id: 'text', label: '文字', icon: Type },
@@ -438,6 +473,22 @@ const QRCodeGenerator = () => {
                       
                       <p className="text-xs text-gray-500 mt-2">
                         💡 入力内容を自動判定してQRコードを生成します
+                      </p>
+                    </div>
+                    
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-2">
+                        ファイル名（任意）
+                      </label>
+                      <input
+                        type="text"
+                        value={fileName}
+                        onChange={(e) => setFileName(e.target.value)}
+                        placeholder="例: my-website、営業資料、連絡先QR"
+                        className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-purple-500 focus:border-transparent transition-all duration-200"
+                      />
+                      <p className="text-xs text-gray-500 mt-1">
+                        🗂️ 拡張子(.png)とタイムスタンプは自動で追加されます
                       </p>
                     </div>
                   </>
@@ -637,7 +688,22 @@ qr3,連絡先情報"
                   </div>
 
                   {qrData && (
-                    <div className="flex gap-4 w-full max-w-sm">
+                    <>
+                      <div className="w-full max-w-sm mb-4">
+                        <div className="bg-blue-50 border border-blue-200 rounded-lg p-3">
+                          <p className="text-xs text-blue-700 mb-1">📁 ダウンロードファイル名プレビュー:</p>
+                          <p className="text-sm font-mono text-blue-800 break-all">
+                            {qrData ? getPreviewFileName() : '（QRコード生成後に表示）'}
+                          </p>
+                          {!fileName.trim() && qrData && (
+                            <p className="text-xs text-blue-600 mt-1">
+                              💡 ファイル名が未入力のため自動生成されています
+                            </p>
+                          )}
+                        </div>
+                      </div>
+                      
+                      <div className="flex gap-4 w-full max-w-sm">
                       <button
                         onClick={downloadQRCode}
                         className="flex-1 flex items-center justify-center gap-2 px-6 py-3 bg-gradient-to-r from-purple-600 to-blue-600 text-white rounded-xl hover:from-purple-700 hover:to-blue-700 transition-all duration-200 font-medium shadow-lg"
@@ -663,6 +729,7 @@ qr3,連絡先情報"
                         )}
                       </button>
                     </div>
+                    </>
                   )}
                 </div>
               )}
